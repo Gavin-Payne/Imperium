@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { signin } from '../services/api';
-import { signup } from '../services/api'; // Import the signup function from API services
+import { signup } from '../services/api';
 
 function SignUp({ setToken }) {
   const [username, setUsername] = useState('');
@@ -16,8 +16,8 @@ function SignUp({ setToken }) {
     }
 
     try {
-      const data = await signup(username, password); // Call the signup API
-      setToken(data.token); // Set the token if signup is successful
+      const data = await signup(username, password);
+      setToken(data.token);
       const response = await signin(username, password);
       setToken(response.token);
     } catch (error) {
@@ -52,7 +52,6 @@ function SignUp({ setToken }) {
   );
 }
 
-// Styles
 const darkFormStyle = {
   display: 'flex',
   flexDirection: 'column',
