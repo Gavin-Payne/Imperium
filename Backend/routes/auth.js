@@ -1,13 +1,16 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+require('dotenv').config();
 const User = require('../models/Users');
 const router = express.Router();
+const { body, validationResult } = require('express-validator');
 
-// Secret key for JWT
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
 
-// User registration (Sign-Up)
+// Token blacklist set
+const tokenBlacklist = new Set();
+
 router.post('/signup', async (req, res) => {
     const { username, password } = req.body;
 
@@ -22,10 +25,8 @@ router.post('/signup', async (req, res) => {
             return res.status(409).json({ message: 'User already exists' });
         }
 
-        // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Create and save the new user
         const newUser = new User({ username, password: hashedPassword });
         await newUser.save();
 
@@ -36,40 +37,84 @@ router.post('/signup', async (req, res) => {
     }
 });
 
-router.post('/signin', async (req, res) => {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-        console.log('Sign-in failed: Missing username or password');
-        return res.status(400).json({ message: 'Username and password are required' });
-    }
-
-    try {
+router.post(
+    '/signin',
+    [
+      body('username').isString().notEmpty().withMessage('Username is required'),
+      body('password').isString().notEmpty().withMessage('Password is required'),
+    ],
+    async (req, res) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+  
+      const { username, password } = req.body;
+  
+      try {
         const user = await User.findOne({ username });
         if (!user) {
-            console.log(`Sign-in failed: No user found for username: ${username}`);
-            return res.status(401).json({ message: 'Invalid credentials' });
+          console.log(`Sign-in failed: No user found for username: ${username}`);
+          return res.status(401).json({ message: 'Invalid credentials' });
         }
-
+  
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
-            console.log(`Sign-in failed: Password mismatch for username: ${username}`);
-            console.log(`Input password: ${password}`);
-            console.log(`Stored hashed password: ${user.password}`);
-            return res.status(401).json({ message: 'Invalid credentials' });
+          console.log(`Sign-in failed for username: ${username}`);
+          return res.status(401).json({ message: 'Invalid credentials' });
         }
-
-        const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, {
-            expiresIn: '1h',
-        });
-
+  
+        const token = jwt.sign(
+          { id: user._id },
+          JWT_SECRET,
+          { expiresIn: '1h' }
+        );
+  
         console.log(`Sign-in successful for username: ${username}`);
         res.status(200).json({ token, message: 'Signed in successfully' });
-    } catch (error) {
+      } catch (error) {
         console.error('Error in /signin:', error);
-        res.status(500).json({ message: 'Internal server error' });
+        res.status(500).json({ message: 'An unexpected error occurred' });
+      }
     }
+  );
+
+router.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(400).json({ message: 'User not found' });
+    }
+
+    const validPassword = await user.comparePassword(password);
+    if (!validPassword) {
+      return res.status(400).json({ message: 'Invalid password' });
+    }
+
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.json({ token });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
+router.post('/logout', async (req, res) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
+  
+  if (token) {
+    tokenBlacklist.add(token);
+  }
+  
+  res.json({ message: 'Logged out successfully' });
+});
 
+// Export both router and blacklist
+router.tokenBlacklist = tokenBlacklist;
 module.exports = router;

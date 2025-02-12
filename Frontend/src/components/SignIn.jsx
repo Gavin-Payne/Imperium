@@ -19,6 +19,7 @@ const SignIn = ({ setToken }) => {
     try {
       const response = await signin(username, password);
       setToken(response.token);
+      localStorage.setItem('token', response.token);
     } catch (err) {
       if (err.response && err.response.data && err.response.data.message) {
         setError(err.response.data.message);
