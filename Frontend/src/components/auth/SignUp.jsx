@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { signin } from '../services/api';
-import { signup } from '../services/api';
+import { authService } from '../../services/authService'; // Update this import
+import { modernFormStyle, modernInputStyle, modernButtonStyle } from '../../styles/components/forms.styles';
 
 function SignUp({ setToken }) {
   const [username, setUsername] = useState('');
@@ -16,9 +16,9 @@ function SignUp({ setToken }) {
     }
 
     try {
-      const data = await signup(username, password);
+      const data = await authService.signup(username, password);
       setToken(data.token);
-      const response = await signin(username, password);
+      const response = await authService.signin(username, password);
       setToken(response.token);
     } catch (error) {
       setErrorMessage(error.message || 'Error creating account.');
@@ -26,7 +26,7 @@ function SignUp({ setToken }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} style={darkFormStyle}>
+    <form onSubmit={handleSubmit} style={modernFormStyle}>
       <h2 style={{ textAlign: 'center', color: '#ffffff' }}>Sign Up</h2>
       {errorMessage && <p style={errorStyle}>{errorMessage}</p>}
       <input
@@ -34,7 +34,7 @@ function SignUp({ setToken }) {
         placeholder="Username"
         value={username}
         onChange={(e) => setUsername(e.target.value)}
-        style={darkInputStyle}
+        style={modernInputStyle}
         required
       />
       <input
@@ -42,40 +42,15 @@ function SignUp({ setToken }) {
         placeholder="Password (min. 6 characters)"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        style={darkInputStyle}
+        style={modernInputStyle}
         required
       />
-      <button type="submit" style={darkButtonStyle}>
+      <button type="submit" style={modernButtonStyle}>
         Sign Up
       </button>
     </form>
   );
 }
-
-const darkFormStyle = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '10px',
-};
-
-const darkInputStyle = {
-  padding: '10px',
-  border: '1px solid #444',
-  borderRadius: '5px',
-  fontSize: '1em',
-  backgroundColor: '#2c2c2c',
-  color: '#fff',
-};
-
-const darkButtonStyle = {
-  padding: '10px',
-  backgroundColor: '#4caf50',
-  color: '#fff',
-  border: 'none',
-  borderRadius: '5px',
-  fontSize: '1em',
-  cursor: 'pointer',
-};
 
 const errorStyle = {
   color: 'red',

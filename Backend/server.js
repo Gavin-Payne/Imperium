@@ -6,6 +6,8 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const auctionRoutes = require('./routes/auction');
 const playersRoutes = require('./routes/players');
+const graphicsRoutes = require('./routes/graphics');
+const googleAuthRoutes = require('./routes/googleAuth');
 
 dotenv.config();
 const app = express();
@@ -18,6 +20,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/auctions', auctionRoutes);
 app.use('/api/players', playersRoutes);
+app.use('/api/graphics', graphicsRoutes);
+app.use('/api', googleAuthRoutes);
 
 mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
     .then(() => {

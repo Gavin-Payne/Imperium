@@ -8,31 +8,28 @@ const moment = require('moment');
 const path = require('path');
 
 router.post('/', verifyToken, async (req, res) => {
-  const { game, player, date, condition, value, metric, duration, betSize, betType, multiplier } = req.body;
-  const expirationTime = new Date(Date.now() + duration * 60000);
-
-  // Log the raw date input from the client (if needed)
-  console.log('Raw date input from client:', date);
-  
-  // Instead of using the user input date to create a specific time,
-  // we store the auction date as the current time (UTC) when the auction is posted.
-  const auctionDate = new Date();
-  console.log('Auction date set to time posted (UTC):', auctionDate);
-
-  console.log('Creating auction with betSize:', req.body.betSize);
-
   try {
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    const { game, player, date, gameDate, condition, value, metric, duration, betSize, betType, multiplier } = req.body;
+    const expirationTime = new Date(Date.now() + duration * 60000);
 
-    user[betType] -= Number(betSize);
-    await user.save();
+    // Set auction creation date
+    const auctionDate = new Date();
+    
+    // Use the provided gameDate or fall back to the date field
+    const actualGameDate = gameDate ? new Date(gameDate) : new Date(date);
+    
+    console.log('Creating auction with dates:', {
+      creationDate: auctionDate,
+      gameDate: actualGameDate,
+      expirationTime
+    });
 
     const newAuction = new Auction({
       user: req.user.id,
       game,
       player,
       date: auctionDate,
+      gameDate: actualGameDate,
       condition,
       value,
       metric,
@@ -43,11 +40,10 @@ router.post('/', verifyToken, async (req, res) => {
       expirationTime
     });
 
-    const savedAuction = await newAuction.save();
-    console.log("Auction saved. Date from DB:", savedAuction.date);
-    res.status(201).json(savedAuction);
-  } catch (error) {
-    console.error('Error posting auction:', error);
+    const auction = await newAuction.save();
+    res.json(auction);
+  } catch (err) {
+    console.error('Error creating auction:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -71,8 +67,9 @@ router.post('/buy', verifyToken, async (req, res) => {
     if (!buyer) return res.status(404).json({ message: 'Buyer not found' });
     const seller = await User.findById(auction.user);
 
-    // Calculate the cost.
-    const cost = auction.betSize * (auction.multiplier - 1);
+    // Calculate the cost and round to two decimals.
+    const rawCost = auction.betSize * (auction.multiplier - 1);
+    const cost = parseFloat(rawCost.toFixed(2));
 
     if (buyer[auction.betType] < cost) {
       return res.status(400).json({ message: "You don't have enough currency to buy this auction." });
@@ -121,20 +118,39 @@ router.get('/all', verifyToken, async (req, res) => {
   }
 });
 
-// New endpoint to retrieve games for a given date from the SQLite database
+// Add this route for active auctions
+router.get('/active', verifyToken, async (req, res) => {
+  try {
+    const now = new Date();
+    const auctions = await Auction.find({
+      user: req.user.id,
+      expirationTime: { $gt: now },
+      soldTo: null
+    });
+    res.json(auctions);
+  } catch (error) {
+    console.error('Error fetching active auctions:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Backend/routes/auction.js - Fix the games route
 router.get('/games', async (req, res) => {
   const date = req.query.date;
   if (!date) {
     return res.status(400).json({ error: 'Missing date parameter' });
   }
-  // Format the date similarly to retrieve.py: '%a, %b %d, %Y'
-  const formattedDate = moment(date, 'YYYY-MM-DD').format('ddd, MMM DD, YYYY');
+  
+  // Use 'D' instead of 'DD' to avoid leading zeros in day numbers
+  const formattedDate = moment(date).format('ddd, MMM D, YYYY');
+  console.log('Looking for games with date:', formattedDate);
   
   // Use an absolute path to the database file
   const dbPath = path.join(__dirname, '../../nba_schedule.db');
   const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
     if (err) {
       console.error('Error opening database:', err.message);
+      return res.status(500).json({ error: 'Database connection error' });
     }
   });
   
@@ -143,33 +159,36 @@ router.get('/games', async (req, res) => {
       console.error("Error fetching games:", err.message);
       res.status(500).json({ error: err.message });
     } else {
-      // Use bracket notation to correctly access columns with slashes in their names
-      const games = rows.map(row => ({
-        home_team: row["visitor_team"],
-        away_team: row["home_team"]
-      }));
-      res.json(games);
+      // Transform the SQLite data into formatted game strings
+      const gameStrings = rows.map(row => `${row["visitor_team"]} vs ${row["home_team"]}`);
+      
+      console.log('Games found for date', formattedDate, ':', gameStrings);
+      res.json(gameStrings);
     }
+    
+    db.close();
   });
-  
-  db.close();
 });
 
 router.get('/successful', verifyToken, async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Log the request
+    console.log('Fetching successful auctions for user ID:', req.user.id);
     
-    // Return only successful auctions for which the current user is either the seller or the buyer,
-    // and that have a date from today onwards.
+    // Find auctions with proper population
     const auctions = await Auction.find({
-      soldTo: { $ne: null },
-      date: { $gte: today },
+      soldTo: { $ne: null }, // Must be sold
       $or: [
-        { user: req.user.id },
-        { soldTo: req.user.id }
+        { user: req.user.id },  // User is seller
+        { soldTo: req.user.id } // User is buyer
       ]
-    });
+    })
+    .populate('user', 'username _id') // Make sure to include _id
+    .populate('soldTo', 'username _id'); // Make sure to include _id
+    
+    console.log(`Found ${auctions.length} successful auctions for user`);
+    
+    // Send a properly structured response
     res.json(auctions);
   } catch (error) {
     console.error('Error fetching successful auctions:', error);

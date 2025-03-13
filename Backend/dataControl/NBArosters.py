@@ -21,8 +21,12 @@ def create_database(db_path='nba_rosters.db'):
     return conn
 
 def insert_player(conn, team, player):
+    nameMap = {'OKC Thunder': "Oklahoma City Thunder"}
     c = conn.cursor()
-    c.execute('INSERT INTO players (team, player) VALUES (?, ?)', (team, player))
+    if team not in nameMap:
+        c.execute('INSERT INTO players (team, player) VALUES (?, ?)', (team, player))
+    else:
+        c.execute('INSERT INTO players (team, player) VALUES (?, ?)', (nameMap[team], player))
     conn.commit()
 
 def get_team_links():

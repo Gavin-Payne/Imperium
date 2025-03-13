@@ -1,27 +1,41 @@
 import axios from 'axios';
 
-// The base URL of the backend API (adjust if necessary)
-const API_BASE_URL = 'http://localhost:5000/api/auth';
+const api = axios.create({
+  baseURL: 'http://localhost:5000/api',
+});
 
-// Signup function
-export const signup = async (username, password) => {
-  try {
-    const response = await axios.post(`${API_BASE_URL}/signup`, { username, password });
-    return response.data;  // Ensure the backend returns { token: 'some-jwt-token' }
-  } catch (error) {
-    console.error("Error in signup:", error); // Log errors for debugging
-    throw error.response?.data || error.message;
+// Improved request interceptor with better logging
+api.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+      console.log(`Request to ${config.url} with token`);
+    } else {
+      console.log(`Request to ${config.url} without token`);
+    }
+    return config;
+  },
+  error => {
+    console.error('Request error:', error);
+    return Promise.reject(error);
   }
-};
+);
 
-// Signin function
-export const signin = async (username, password) => {
-  try {
-    const response = await axios.post(`${API_BASE_URL}/signin`, { username, password });
-    console.log("Signin response data:", response.data);  // Log the response to see token and data
-    return response.data;  // Ensure response contains { token: 'some-jwt-token' }
-  } catch (error) {
-    console.error("Error in signin:", error); // Log errors for debugging
-    throw error.response?.data || error.message;
+// Add response logging
+api.interceptors.response.use(
+  response => {
+    console.log(`Response from ${response.config.url} - Status: ${response.status}`);
+    return response;
+  },
+  error => {
+    console.error(`Error from ${error.config?.url || 'unknown endpoint'}: ${error.message}`);
+    if (error.response?.status === 401) {
+      console.log('Authentication error - clearing token');
+      localStorage.removeItem('token');
+    }
+    return Promise.reject(error);
   }
-};
+);
+
+export default api;

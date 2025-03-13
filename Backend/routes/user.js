@@ -3,45 +3,43 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/Users');
 const router = express.Router();
 const moment = require('moment-timezone');
-
-// Middleware to verify JWT token
-const verifyToken = (req, res, next) => {
-  const token = req.header('Authorization')?.split(' ')[1];  // Extract token from Authorization header
-
-  if (!token) {
-    return res.status(401).json({ message: 'Access Denied' });
-  }
-
-  try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = verified;  // Attach user data to request
-    next();  // Move to the next middleware/route handler
-  } catch (err) {
-    res.status(400).json({ message: 'Invalid Token' });
-  }
-};
+const verifyToken = require('../middleware/verifyToken');
 
 // Profile route to fetch user data
 router.get('/profile', verifyToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);  // Find user by ID stored in the token
+    console.log("Profile request received for user ID:", req.user.id);
+    
+    const user = await User.findById(req.user.id).select('-password');
+    
     if (!user) {
+      console.log("User not found in database for ID:", req.user.id);
       return res.status(404).json({ message: 'User not found' });
     }
 
+    console.log("User found:", user.username);
+
+    // Add last claim date for daily allowance if available
+    const lastClaimDate = user.lastDailyAllowance ? 
+      new Date(user.lastDailyAllowance) : null;
+      
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Check if daily allowance was already collected today
+    const dailyCollected = lastClaimDate && 
+      lastClaimDate.getDate() === today.getDate() &&
+      lastClaimDate.getMonth() === today.getMonth() &&
+      lastClaimDate.getFullYear() === today.getFullYear();
+
+    // Return the user profile with additional data
     res.json({
-      id: user._id,  // Include the unique user identifier
-      transactions: user.numberOfTransactions,
-      winRate: user.winRate,
-      winnings: user.winnings,
-      loss: user.LargestLoss,
-      win: user.LargestWin,
-      silver: user.silver,
-      gold: user.gold
+      ...user._doc,  // Use _doc to get the raw document
+      dailyCollected
     });
-  } catch (err) {
-    console.error('Error fetching user data:', err);
-    res.status(500).json({ message: 'Server error' });
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 

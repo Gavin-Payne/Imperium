@@ -7,6 +7,9 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
+if (!JWT_SECRET) {
+  console.error('WARNING: JWT_SECRET is not set in environment variables!');
+}
 
 // Token blacklist set
 const tokenBlacklist = new Set();
@@ -95,7 +98,7 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign(
       { id: user._id },
-      process.env.JWT_SECRET,
+      JWT_SECRET,
       { expiresIn: '24h' }
     );
 
